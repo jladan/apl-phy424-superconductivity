@@ -16,18 +16,18 @@ class SIM922(serial.Serial):
     
     def __init__(self, port='COM4', module_no=4, term_string='xxyyzz', baud=57600, timeout=0.5):
         super().__init__(port, baud, timeout=timeout)
-        self.term_string=term_string
-        self._connect_to_module(module_no)
+        self._term_string=term_string
+        self._connect_to_module(module_no) # start communication with the sim922 module
 
     def _connect_to_module(self, module_no):
         """ Connect to the module <module_no> to pass-through commands
         """
-        self.send(f'conn {module_no}, "{self.term_string}"')
+        self.send(f'conn {module_no}, "{self._term_string}"')
     
     def _disconnect_module(self):
         """ Send the connection termination string to return to SIM900 communication
         """
-        self.send(self.term_string)
+        self.send(self._term_string)
 
     def get_T(self):
         return float(self.send_receive('tval? 1'))
