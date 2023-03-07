@@ -79,34 +79,55 @@ class LockIn7270:
         self.ep_out = self.dev[0].interfaces()[0].endpoints()[0]  # bulk out
         self.data = {0: [], 1: [], 3: [], 4: [], 5: []}  
 
-    def query(self, cmd, silent=False):
-        """ Write and read a command to the lock in instrument. 
+    def set_up(self):
+        """ Write settings based on the parameter attribute. """
+        for cmd, value in self.paramaters.items():
+            self.dev.write(1, "{} {}".format(cmd, value))
+        self.dev.write(1, "AS") # autosensitivity mode
+
+    def query(self, cmd, silent=True):
+        """ Write and read a command to the lock in instrument, ignoring errors.
             
             Paramaters
             ----------
             cmd : str
                 The command.
             silent : bool
-                Wheter the read message should be printed to the screen. False
-                is equivalent to just a write command. 
+                Print the response to console if silent=False
 
+            Returns
+            -------
+            response : str
+                The response from the device as a UTF-8 string.
+        """
+        response = ''
+        try:
+            response = self.query_safe(cmd)
+        except:
+            pass
+        if not silent:
+            print(response)
+        return response
+
+    def query_safe(self, cmd):
+        """ Write and read a command to the lock in instrument, passing errors through.
+            
+            Paramaters
+            ----------
+            cmd : str
+                The command.
+
+            Returns
+            -------
+            response : str
+                The response from the device as a UTF-8 string.
         """
         self.dev.write(1, cmd)
-        try:
-            output = self.dev.read(
+        output = self.dev.read(
                 self.ep_in.bEndpointAddress, 
                 self.ep_in.wMaxPacketSize)
-            if not silent:
-                print(output.tobytes().decode("utf-8"))
-        except:
-            if not silent:
-                print('')
-
-    def set_up(self):
-        """ Write settings based on the parameter attribute. """
-        for cmd, value in self.paramaters.items():
-            self.dev.write(1, "{} {}".format(cmd, value))
-        self.dev.write(1, "AS") # autosensitivity mode
+        result = output.tobytes().decode('utf-8')
+        return result
 
     def curve_setup(self, sample_rate=10000, len_=100000):
         """ Initialize curve collection settings of the device.
