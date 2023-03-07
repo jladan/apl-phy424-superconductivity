@@ -57,6 +57,7 @@ class LockIn7270:
     """
     ID_VENDOR = 2605
     ID_PRODUCT = 27
+    EP_WRITE = 1
     def __init__(self, cmds=SETUP_CMDS):
         """ Initialize class.
          
@@ -71,19 +72,43 @@ class LockIn7270:
                     "DCCOUPLE": 0, "FLOAT": 1, "TC": 12, "FET": 0.
                     See lock in manual for more details. 
         """
+        # find the device and set the configuration
         self.dev = usb.core.find(idVendor=self.ID_VENDOR, idProduct=self.ID_PRODUCT)
         self.dev.set_configuration()
+        # store the lockin set-up commands for a future call to .set_up()
         self.paramaters = cmds
         # in and out endpoints respectively
         self.ep_in = self.dev[0].interfaces()[0].endpoints()[1]  # bulk in
         self.ep_out = self.dev[0].interfaces()[0].endpoints()[0]  # bulk out
+        # Initialize data storage for reading curves
         self.data = {0: [], 1: [], 3: [], 4: [], 5: []}  
 
     def set_up(self):
         """ Write settings based on the parameter attribute. """
         for cmd, value in self.paramaters.items():
-            self.dev.write(1, "{} {}".format(cmd, value))
-        self.dev.write(1, "AS") # autosensitivity mode
+            self.send("{} {}".format(cmd, value))
+        self.send("AS") # autosensitivity mode
+
+    def send(self, cmd):
+        """ Sends a command to the lockin device """
+        self.dev.write(self.EP_WRITE, cmd)
+
+    def send_list(self, cmdlist):
+        """ Sends a list of commands to the lockin device. """
+        for cmd in cmdlist:
+            self.send(cmd)
+
+    def receive(self):
+        """ Reads data from the lockin device. 
+
+            returns
+            -------
+            output : bytes
+        """
+        output = self.dev.read(
+                self.ep_in.bEndpointAddress, 
+                self.ep_in.wMaxPacketSize)
+        return output
 
     def query(self, cmd, silent=True):
         """ Write and read a command to the lock in instrument, ignoring errors.
@@ -123,9 +148,7 @@ class LockIn7270:
                 The response from the device as a UTF-8 string.
         """
         self.dev.write(1, cmd)
-        output = self.dev.read(
-                self.ep_in.bEndpointAddress, 
-                self.ep_in.wMaxPacketSize)
+        output = self.receive()
         result = output.tobytes().decode('utf-8')
         return result
 
