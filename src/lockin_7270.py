@@ -89,6 +89,7 @@ class LockIn7270:
             self.send("{} {}".format(cmd, value))
         self.send("AS") # autosensitivity mode
 
+    # Send and receive methods {{{
     def send(self, cmd):
         """ Sends a command to the lockin device """
         self.dev.write(self.EP_WRITE, cmd)
@@ -110,6 +111,9 @@ class LockIn7270:
                 self.ep_in.wMaxPacketSize)
         return output
 
+    # }}}
+
+    # General Query Method {{{
     def query(self, cmd, silent=True):
         """ Write and read a command to the lock in instrument, ignoring errors.
             
@@ -151,6 +155,8 @@ class LockIn7270:
         output = self.receive()
         result = output.tobytes().decode('utf-8')
         return result
+
+    # }}}
 
     def curve_setup(self, sample_rate=10000, len_=100000):
         """ Initialize curve collection settings of the device.
