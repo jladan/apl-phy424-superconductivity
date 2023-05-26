@@ -1,3 +1,77 @@
+""" Lockin Amplifier Module
+
+This module implements a class for communications with the lock-in amplifier (AMETEK 7270)
+
+Usage
+=====
+
+A connection is established when the `LockIn7270` object is created. A
+reasonable set of defaults is established at that point.
+- single, internal reference mode
+- A-B differential (reads voltage between pins of A and B connectors)
+- Floating ground (for when a single-connector is used)
+- Automatic sensitivity
+
+The majority of measuremnts should be made using the "Front Panel" methods:
+`get_x()`, `get_y()`, etc. If faster sampling is required, then the Lockin's
+curve buffer can be used.
+
+For a single measurement,
+```
+lockin = LockIn7270()
+mag = lockin.get_magnitude()
+# At this point, magnitude should be a float matching the front panel measurement in Volts.
+```
+
+For repeated measurements at approximately 1s intervals,
+```
+import time
+import numpy as np
+
+from lockin_7270 import LockIn7270
+
+lockin = LockIn7270()
+
+duration = 60 # Roughly 1 minute
+times, magnitudes = [], []
+start_time = time.time()
+for sample in range(60):
+    magnitudes.push(lockin.get_magnitude())
+    times.push(time.time() - start_time)
+    time.sleep(1)
+
+# Cast to an array for later use
+times = np.array(times)
+magnitudes = np.array(magnitudes)
+```
+
+Note that `time.sleep()` is not precise, and `lockin.get_magnitude()` takes
+additional time for queries, so it is not possible to precisely control time of
+measurements this way. To account for that, we measure the actual time of the
+measurement using `time.time()`.
+
+For curve measurements, refer to the `LockIn7270.run()` method.
+
+```
+import time
+from lockin_7270 import LockIn7270
+
+lockin = LockIn7270()
+
+sample_rate = 10000 # sample rate for the lockin's internal curve buffer
+buffer_length = 10000000 # number of samples to retrieve from the curve buffer
+lockin.curve_setup(sample_rate, buffer_length)
+events[0].set()
+lockin.send("TD") # Must be sent to begin sampling
+# The following sleep command may or may not be necessary
+time.sleep(buffer_length * sample_rate / 1e6 + 1)
+self.read_all_curves()
+
+# The curve data is now stored in lockin.data
+```
+"""
+
+
 import time
 import numpy as np
 import array
@@ -39,24 +113,38 @@ class LockIn7270:
     """ Instance of an Ametek 7270 lock in amplifier
 
 
-       Public Methods
-       --------------
-       query(..) - write and read commands to device
-       setup(..) - update device settings
-       curve_setup(..) - update device settings for new curve measurement
-       run(..) - complete curve measurements
-       read_curve(..) - read curve data for a single attribute into data buffer
-       read_all_curves - read all curves into data buffer
+        Public Methods
+        --------------
+        query(..)       - write and read commands to device, ignoring errors
+        query_safe(..)  - write and read commands to device
+        send(..)        - write a command to the device
+        send_list(..)   - write a list of commands to the device
+        setup(..)       - update device settings
 
-       Public Attributes
-       ----------------
-       dev - lock in device.
-       data - dictionary of stored data measurements.
-       ep_in/_out - location of in and out usb endpoints respectively.
-       
+        DAQ Methods
+        -----------
+        get_x()         - query the 'X' value
+        get_y()         - query the 'Y' value
+        get_magnitude() - query the 'MAG' (magnitude) value
+        get_phase()     - query the 'PHA' (phase) value
+
+        Curve (fast sampling) Methods
+        -----------------------------
+        curve_setup(..) - update device settings for new curve measurement
+        read_curve(..)  - read curve data for a single attribute into data buffer
+        read_all_curves - read all curves into data buffer
+        run(..)         - complete curve measurements
+ 
+        Public Attributes
+        ----------------
+        dev - lock in device.
+        data - dictionary of stored data measurements.
+        ep_in/_out - location of in and out usb endpoints respectively.
+
     """
     ID_VENDOR = 2605
     ID_PRODUCT = 27
+    EP_WRITE = 1
     def __init__(self, cmds=SETUP_CMDS):
         """ Initialize class.
          
@@ -71,43 +159,117 @@ class LockIn7270:
                     "DCCOUPLE": 0, "FLOAT": 1, "TC": 12, "FET": 0.
                     See lock in manual for more details. 
         """
+        # find the device and set the configuration
         self.dev = usb.core.find(idVendor=self.ID_VENDOR, idProduct=self.ID_PRODUCT)
         self.dev.set_configuration()
+        # store the lockin set-up commands for a future call to .set_up()
         self.paramaters = cmds
         # in and out endpoints respectively
         self.ep_in = self.dev[0].interfaces()[0].endpoints()[1]  # bulk in
         self.ep_out = self.dev[0].interfaces()[0].endpoints()[0]  # bulk out
+        # Initialize data storage for reading curves
         self.data = {0: [], 1: [], 3: [], 4: [], 5: []}  
 
-    def query(self, cmd, silent=False):
-        """ Write and read a command to the lock in instrument. 
+    def set_up(self):
+        """ Write settings based on the parameter attribute. """
+        for cmd, value in self.paramaters.items():
+            self.send("{} {}".format(cmd, value))
+        self.send("AS") # autosensitivity mode
+
+    # Basic send and receive methods {{{
+    def send(self, cmd):
+        """ Sends a command to the lockin device """
+        self.dev.write(self.EP_WRITE, cmd)
+
+    def send_list(self, cmdlist):
+        """ Sends a list of commands to the lockin device. """
+        for cmd in cmdlist:
+            self.send(cmd)
+
+    def receive(self):
+        """ Reads data from the lockin device. 
+
+            returns
+            -------
+            output : bytes
+        """
+        output = self.dev.read(
+                self.ep_in.bEndpointAddress, 
+                self.ep_in.wMaxPacketSize)
+        return output
+
+    # }}}
+
+    # General Query Methods {{{
+    def query(self, cmd, silent=True):
+        """ Write and read a command to the lock in instrument, ignoring errors.
             
             Paramaters
             ----------
             cmd : str
                 The command.
             silent : bool
-                Wheter the read message should be printed to the screen. False
-                is equivalent to just a write command. 
+                Print the response to console if silent=False
 
+            Returns
+            -------
+            response : str
+                The response from the device as a UTF-8 string.
+        """
+        response = ''
+        try:
+            response = self.query_safe(cmd)
+        except:
+            pass
+        if not silent:
+            print(response)
+        return response
+
+    def query_safe(self, cmd):
+        """ Write and read a command to the lock in instrument, passing errors through.
+            
+            Paramaters
+            ----------
+            cmd : str
+                The command.
+
+            Returns
+            -------
+            response : str
+                The response from the device as a UTF-8 string.
         """
         self.dev.write(1, cmd)
-        try:
-            output = self.dev.read(
-                self.ep_in.bEndpointAddress, 
-                self.ep_in.wMaxPacketSize)
-            if not silent:
-                print(output.tobytes().decode("utf-8"))
-        except:
-            if not silent:
-                print('')
+        output = self.receive()
+        result = output.tobytes().decode('utf-8')
+        return result
 
-    def set_up(self):
-        """ Write settings based on the parameter attribute. """
-        for cmd, value in self.paramaters.items():
-            self.dev.write(1, "{} {}".format(cmd, value))
-        self.dev.write(1, "AS") # autosensitivity mode
+    # }}}
 
+    # Front-panel measurements {{{
+
+    def get_x(self):
+        """ Read the X value from the front panel as a float """
+        return self._get_float('X.')
+
+    def get_y(self):
+        """ Read the Y value from the front panel as a float """
+        return self._get_float('Y.')
+
+    def get_magnitude(self):
+        """ Read the magnitude value from the front panel as a float """
+        return self._get_float('MAG.')
+
+    def get_phase(self):
+        """ Read the phase value from the front panel as a float """
+        return self._get_float('PHA.')
+
+    def _get_float(self, cmd):
+        value_str = self.query_safe(cmd)
+        return float(value_str)
+
+    #}}}
+
+    # Curve reading methods {{{
     def curve_setup(self, sample_rate=10000, len_=100000):
         """ Initialize curve collection settings of the device.
 
@@ -181,10 +343,15 @@ class LockIn7270:
         for i in self.data.keys():
             self.read_curve(i)
 
+    # }}}
+
     def run(self, curr_fin_voltage,
             events, lock, barrier, 
             sample_rate=10000, len_=1000000):
-        """ Run curve aquistion.
+        """ Run curve aquistion (deprecated).
+
+            This was intended to run in a thread, but was replaced with the
+            simpler front-panel measurements.
             
             Parameters
             ----------
