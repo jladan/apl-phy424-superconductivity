@@ -1,24 +1,38 @@
 # Superconductivity - Condensed Matter Physics
- PHY424 - University of Toronto Advanced Physics Labs
-Program How To
 
+*(PHY424 - University of Toronto Advanced Physics Labs)*
 
-The files here manage the data aquisition needed in the CMP Superconductivity
-experiement. 
+The files here manage the data acquisition needed in the CMP Superconductivity
+experiment. The most important files are
 
-Please read through the source code and try to understand how it
-works. This is a great skill to practice. See the
-[tutorial](CMP_SC_RUN_EXAMPLE.pdf) for implentation details. 
+- `src/lockin_7270.py`:
+    A class to manage serial communications with the lockin-amplifier.
+- `src/sim922.py`:
+    A class to manage serial communicatins with the SIM922 thermodiode monitor
+- `src/daq_example.py`:
+    An example how to use the two classes to measure temperatures and voltages.
+
+While `daq_example.py` can technically be used to perform the experiment, there
+are problems with it, which make it very easy to loose your measurements. We
+recommend writing your own script, which periodically saves the measurements,
+and does not overwrite existing files.
+
+Please read through the source code and try to understand how it works. This is
+a great skill to practice. 
 
 
 ## Requirements 
-The following python libraries ust be installed on your computer
+
+The following python libraries must be installed on your computer. They have
+already been installed on the lab computer.
+
 - numpy
 - pyusb
 - pyvisa
-- threading
-- array
-- time
+
+In addition to the python modules, additional drivers must be installed for the
+lockin amplifier. They can either be obtained from the manufacturer's website,
+or created using libusb.
 
 To find a list of modules that are available for your python distribution open a
 python console or jupyter-notebook file and run:
