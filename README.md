@@ -1,6 +1,12 @@
-# Superconductivity - Condensed Matter Physics
+# Superconductivity Lab - Condensed Matter Physics
 
 *(PHY424 - University of Toronto Advanced Physics Labs)*
+[official repository](https://gitlab.physics.utoronto.ca/advanced-lab/experiments/cmp-superconductivity)
+
+The purpose of the CMP superconductivity lab is to measure the
+Temperature-Resistance curve of a high-temperature superconductor sample. The
+sample is placed inside a Liquid-Nitrogen cooled cryostat, and the resistance is
+measured using a digital lock-in amplifier.
 
 The files here manage the data acquisition needed in the CMP Superconductivity
 experiment. The most important files are
@@ -8,7 +14,7 @@ experiment. The most important files are
 - `src/lockin_7270.py`:
     A class to manage serial communications with the lockin-amplifier.
 - `src/sim922.py`:
-    A class to manage serial communicatins with the SIM922 thermodiode monitor
+    A class to manage serial communications with the SIM922 thermodiode monitor
 - `src/daq_example.py`:
     An example how to use the two classes to measure temperatures and voltages.
 
